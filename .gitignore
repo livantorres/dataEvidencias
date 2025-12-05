@@ -1,14 +1,21 @@
 # ===========================================
-# ESTO EXCLUYE TODO DENTRO DE ESOS DIRECTORIOS
-# PERO MANTIENE LA ESTRUCTURA DE DIRECTORIOS
+# IGNORAR SOLO LOS ARCHIVOS DENTRO
+# PERMITIR QUE SE SUBAN LOS DIRECTORIOS
 # ===========================================
-/storage/instituciones/escudos/**
+
+# Asegurar que storage NO sea ignorado
+#!/storage/
+#!/storage/instituciones/
 !/storage/instituciones/escudos/
+!/storage/instituciones/evidencias/
+
+
+# Escudos: ignora todo dentro, pero no el directorio
+/storage/instituciones/escudos/*
 !/storage/instituciones/escudos/.gitkeep
 
-/storage/instituciones/evidencias/**
-!/storage/instituciones/evidencias/
+# Evidencias: ignora todo dentro, pero no el directorio
+/storage/instituciones/evidencias/*
 !/storage/instituciones/evidencias/.gitkeep
 
-# El doble ** significa "cualquier archivo/subdirectorio"
-# El ! significa excepción (sí incluirlo)
+
