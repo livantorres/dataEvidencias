@@ -6,8 +6,8 @@
 # Asegurar que storage NO sea ignorado
 #!/storage/
 #!/storage/instituciones/
-!/storage/instituciones/escudos/
-!/storage/instituciones/evidencias/
+#!/storage/instituciones/escudos/
+#!/storage/instituciones/evidencias/
 
 
 # Escudos: ignora todo dentro, pero no el directorio
