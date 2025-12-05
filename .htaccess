@@ -1,0 +1,45 @@
+RewriteEngine On
+
+# Redirigir todas las solicitudes a index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Proteger directorios sensibles
+Options -Indexes
+
+# Seguridad adicional - bloquear acceso directo a archivos PHP en carpetas
+<FilesMatch "\.(php|tpl|inc|log)$">
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>
+
+# Permitir acceso solo a index.php en la raíz
+<Files "index.php">
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+</Files>
+
+# Permitir acceso a archivos estáticos
+<FilesMatch "\.(css|js|png|jpg|jpeg|gif|ico|pdf|zip)$">
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+</FilesMatch>
+
+# Redireccionar si no hay mod_rewrite
+ErrorDocument 404 /index.php
