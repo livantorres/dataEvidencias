@@ -1,0 +1,14 @@
+# ===========================================
+# ESTO EXCLUYE TODO DENTRO DE ESOS DIRECTORIOS
+# PERO MANTIENE LA ESTRUCTURA DE DIRECTORIOS
+# ===========================================
+/storage/instituciones/escudos/**
+!/storage/instituciones/escudos/
+!/storage/instituciones/escudos/.gitkeep
+
+/storage/instituciones/evidencias/**
+!/storage/instituciones/evidencias/
+!/storage/instituciones/evidencias/.gitkeep
+
+# El doble ** significa "cualquier archivo/subdirectorio"
+# El ! significa excepción (sí incluirlo)
