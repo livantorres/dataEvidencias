@@ -3,18 +3,22 @@
 $page_title = "Gestión de Ciclos";
 ?>
 
+<style>
+.btn-group .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+</style>
+
 <div class="container-fluid">
     <!-- Header con título y botón de acción -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3 mb-0">
             <i class="fas fa-calendar-alt me-2"></i> Ciclos
         </h1>
-        <!--<a href="index.php?modulo=ciclos&accion=create" class="btn btn-primary">
+        <button type="button" class="btn btn-primary" onclick="openCreateCicloModal()">
             <i class="fas fa-plus me-2"></i> Nuevo Ciclo
-        </a>-->
-		<button type="button" class="btn btn-primary" onclick="openCreateCicloModal()">
-			<i class="fas fa-plus me-2"></i> Nuevo Ciclo
-		</button>
+        </button>
     </div>
 
     <!-- Card principal -->
@@ -33,7 +37,12 @@ $page_title = "Gestión de Ciclos";
         </div>
         
         <div class="card-body">
-            <?php if (isset($ciclos) && $ciclos->rowCount() > 0): ?>
+            <?php 
+            // Verificar si $ciclos está definido y es un PDOStatement
+            if (isset($ciclos) && $ciclos instanceof PDOStatement): 
+                $rowCount = $ciclos->rowCount();
+                if ($rowCount > 0): 
+            ?>
             <div class="table-responsive">
                 <table class="table table-hover table-striped">
                     <thead>
@@ -46,16 +55,29 @@ $page_title = "Gestión de Ciclos";
                         </tr>
                     </thead>
                     <tbody>
-                        <?php while ($ciclo = $ciclos->fetch(PDO::FETCH_ASSOC)): ?>
+                        <?php 
+                        // Reiniciar el cursor del resultado
+                        $ciclos->execute(); // Re-ejecutar para asegurar que el cursor esté al inicio
+                        while ($ciclo = $ciclos->fetch(PDO::FETCH_ASSOC)): 
+                        ?>
                         <?php
                         // Obtener número de evidencias para este ciclo
-                        $query_evidencias = "SELECT COUNT(*) as total FROM evidencias WHERE ciclo_id = ?";
-                        $stmt_ev = $this->db->prepare($query_evidencias);
-                        $stmt_ev->execute([$ciclo['id']]);
-                        $total_evidencias = $stmt_ev->fetch(PDO::FETCH_ASSOC)['total'];
+                        $total_evidencias = 0;
+                        if (isset($db)) {
+                            try {
+                                $query_evidencias = "SELECT COUNT(*) as total FROM evidencias WHERE ciclo_id = ?";
+                                $stmt_ev = $db->prepare($query_evidencias);
+                                $stmt_ev->execute([$ciclo['id']]);
+                                $result = $stmt_ev->fetch(PDO::FETCH_ASSOC);
+                                $total_evidencias = $result['total'] ?? 0;
+                            } catch (Exception $e) {
+                                error_log("Error al contar evidencias: " . $e->getMessage());
+                                $total_evidencias = 0;
+                            }
+                        }
                         ?>
                         <tr>
-                            <td><?php echo $ciclo['id']; ?></td>
+                            <td><?php echo htmlspecialchars($ciclo['id']); ?></td>
                             <td>
                                 <strong><?php echo htmlspecialchars($ciclo['descripcion']); ?></strong>
                             </td>
@@ -71,17 +93,12 @@ $page_title = "Gestión de Ciclos";
                             </td>
                             <td>
                                 <div class="btn-group" role="group">
-                                   <!-- <a href="index.php?modulo=ciclos&accion=edit&id=<?php echo $ciclo['id']; ?>" 
-                                       class="btn btn-sm btn-outline-primary" 
-                                       title="Editar ciclo">
+                                    <button type="button" 
+                                            class="btn btn-sm btn-outline-primary" 
+                                            onclick="openEditCicloModal(<?php echo $ciclo['id']; ?>)" 
+                                            title="Editar ciclo">
                                         <i class="fas fa-edit"></i>
-                                    </a>-->
-									<button type="button" 
-											class="btn btn-sm btn-outline-primary" 
-											onclick="openEditCicloModal(<?php echo $ciclo['id']; ?>)" 
-											title="Editar ciclo">
-										<i class="fas fa-edit"></i>
-									</button>
+                                    </button>
                                     
                                     <?php if ($ciclo['activo'] == 1): ?>
                                     <button type="button" 
@@ -126,9 +143,23 @@ $page_title = "Gestión de Ciclos";
                 <p class="text-muted mb-4">
                     Los ciclos representan períodos académicos (ej: 2024, 2025)
                 </p>
-                <a href="index.php?modulo=ciclos&accion=create" class="btn btn-primary">
+                <button type="button" class="btn btn-primary" onclick="openCreateCicloModal()">
                     <i class="fas fa-plus me-2"></i> Agregar Primer Ciclo
-                </a>
+                </button>
+            </div>
+            <?php endif; ?>
+            
+            <?php else: ?>
+            <div class="text-center py-5">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                    <h4>Error al cargar los ciclos</h4>
+                    <p>No se pudo obtener la lista de ciclos.</p>
+                    <p class="small text-muted">Verifique la conexión a la base de datos y que la tabla 'ciclos' exista.</p>
+                    <button type="button" class="btn btn-primary mt-2" onclick="window.location.reload()">
+                        <i class="fas fa-redo me-2"></i> Recargar
+                    </button>
+                </div>
             </div>
             <?php endif; ?>
         </div>
@@ -142,6 +173,7 @@ $page_title = "Gestión de Ciclos";
         </div>
     </div>
 </div>
+
 
 <!-- Modal para activar ciclo -->
 <div class="modal fade" id="activateModal" tabindex="-1" aria-hidden="true">
@@ -208,7 +240,7 @@ $page_title = "Gestión de Ciclos";
             <form id="cicloForm" method="POST">
                 <div class="modal-body">
                     <input type="hidden" name="id" id="cicloId">
-                    <input type="hidden" name="modulo" value="ciclos">
+                    <input type="hidden" name="modulo" value="ciclo">
                     <input type="hidden" name="accion" id="cicloFormAction" value="create">
                     
                     <div class="mb-3">
@@ -245,10 +277,45 @@ $page_title = "Gestión de Ciclos";
 
 <script>
 // Variables globales para ciclos
-let cicloModal = new bootstrap.Modal(document.getElementById('cicloModal'));
+let cicloModal = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM cargado, inicializando modales...');
+    
+    // Inicializar modales de Bootstrap
+    if (typeof bootstrap !== 'undefined') {
+        const cicloModalEl = document.getElementById('cicloModal');
+        if (cicloModalEl) {
+            cicloModal = new bootstrap.Modal(cicloModalEl);
+            console.log('Modal de ciclo inicializado');
+        } else {
+            console.error('No se encontró el elemento #cicloModal');
+        }
+    } else {
+        console.error('Bootstrap no está disponible');
+    }
+    
+    // Configurar tooltips
+    initTooltips();
+});
+
+// Inicializar tooltips
+function initTooltips() {
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+        tooltipTriggerList.forEach(tooltipTriggerEl => {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+}
 
 // Función para abrir modal de crear ciclo
 function openCreateCicloModal() {
+    if (!cicloModal) {
+        alert('Modal no inicializado. Asegúrese de que Bootstrap esté cargado.');
+        return;
+    }
+    
     document.getElementById('cicloModalTitle').textContent = 'Nuevo Ciclo';
     document.getElementById('cicloFormAction').value = 'create';
     document.getElementById('cicloId').value = '';
@@ -260,149 +327,379 @@ function openCreateCicloModal() {
 
 // Función para abrir modal de editar ciclo
 function openEditCicloModal(id) {
-    fetch(`index.php?modulo=ciclos&accion=edit&id=${id}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const ciclo = data.data;
-                
-                document.getElementById('cicloModalTitle').textContent = 'Editar Ciclo';
-                document.getElementById('cicloFormAction').value = 'edit';
-                document.getElementById('cicloId').value = ciclo.id;
-                document.getElementById('descripcion').value = ciclo.descripcion;
-                document.getElementById('cicloActivo').checked = ciclo.activo == 1;
-                
-                cicloModal.show();
-            } else {
-                Swal.fire('Error', data.message || 'Error al cargar el ciclo', 'error');
+    if (!cicloModal) {
+        alert('Modal no inicializado. Asegúrese de que Bootstrap esté cargado.');
+        return;
+    }
+    
+    console.log(`Solicitando ciclo ID: ${id}`);
+    
+    // Usar la ruta completa
+    fetch(`index.php?modulo=ciclo&accion=edit&id=${id}`, {
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        console.log('Response status:', response.status, response.statusText);
+        
+        // Si es redirección 302, manejar sesión expirada
+        if (response.status === 302 || response.redirected) {
+            window.location.href = 'index.php?modulo=auth&accion=login';
+            throw new Error('Sesión expirada');
+        }
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+        }
+        
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        
+        if (data.success) {
+            const ciclo = data.data;
+            
+            document.getElementById('cicloModalTitle').textContent = 'Editar Ciclo';
+            document.getElementById('cicloFormAction').value = 'edit';
+            document.getElementById('cicloId').value = ciclo.id;
+            document.getElementById('descripcion').value = ciclo.descripcion;
+            document.getElementById('cicloActivo').checked = ciclo.activo == 1;
+            
+            cicloModal.show();
+        } else {
+            // Si hay redirección en la respuesta
+            if (data.redirect) {
+                window.location.href = data.redirect;
+                return;
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            Swal.fire('Error', 'Error de conexión', 'error');
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'Error al cargar el ciclo'
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        
+        // Solo mostrar alerta si no es redirección de sesión
+        if (!error.message.includes('Sesión expirada')) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de conexión',
+                text: 'No se pudo conectar con el servidor. Verifique su conexión.'
+            });
+        }
+    });
+}
+
+// Función para manejar respuestas de fetch
+function handleFetchResponse(response) {
+    console.log('Response status:', response.status, response.statusText);
+    
+    // Si es redirección 302, manejar sesión expirada
+    if (response.status === 302 || response.redirected) {
+        window.location.href = 'index.php?modulo=auth&accion=login';
+        throw new Error('Sesión expirada');
+    }
+    
+    if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.json();
+}
+
+// Función para manejar errores de AJAX
+function handleAjaxError(error) {
+    console.error('Error:', error);
+    
+    // Solo mostrar alerta si no es redirección de sesión
+    if (!error.message.includes('Sesión expirada')) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de conexión',
+            text: 'No se pudo conectar con el servidor. Verifique su conexión.'
         });
+    }
+    
+    return Promise.reject(error);
 }
 
 // Enviar formulario de ciclo
-document.getElementById('cicloForm').addEventListener('submit', function(e) {
-    e.preventDefault();
+const cicloForm = document.getElementById('cicloForm');
+if (cicloForm) {
+    cicloForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const submitBtn = document.getElementById('cicloSubmitBtn');
+        if (!submitBtn) return;
+        
+        const spinner = submitBtn.querySelector('.spinner-border');
+        const originalText = submitBtn.textContent;
+        
+        // Mostrar loading
+        spinner.classList.remove('d-none');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Procesando...';
+        
+        const formData = new FormData(this);
+        
+        // Obtener la acción del formulario
+        const action = document.getElementById('cicloFormAction').value;
+        
+        // Usar la ruta completa con parámetros en la URL
+        let url = '';
+        if (action === 'create') {
+            url = `index.php?modulo=ciclo&accion=create`;
+        } else if (action === 'edit') {
+            const id = document.getElementById('cicloId').value;
+            url = `index.php?modulo=ciclo&accion=edit&id=${id}`;
+        }
+        
+        fetch(url, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        })
+        .then(handleFetchResponse)
+        .then(data => {
+            if (data.success) {
+                Swal.fire({
+                    title: '¡Éxito!',
+                    text: data.message,
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    if (cicloModal) {
+                        cicloModal.hide();
+                    }
+                    window.location.reload();
+                });
+            } else {
+                // Si hay redirección en la respuesta
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                    return;
+                }
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message || 'Error al guardar el ciclo'
+                });
+            }
+        })
+        .catch(handleAjaxError)
+        .finally(() => {
+            // Restaurar botón
+            spinner.classList.add('d-none');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        });
+    });
+}
+
+// Delegación de eventos para botones dinámicos
+document.addEventListener('click', function(e) {
+    // Activar ciclo
+    if (e.target.closest('.set-active')) {
+        e.preventDefault();
+        const button = e.target.closest('.set-active');
+        const id = button.dataset.id;
+        const descripcion = button.dataset.descripcion;
+        
+        Swal.fire({
+            title: '¿Activar ciclo?',
+            html: `¿Está seguro de activar el ciclo <strong>${descripcion}</strong>?<br><br>
+                  <small class="text-muted">Al activar este ciclo, el ciclo actual se desactivará automáticamente.</small>`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, activar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                activateCiclo(id, descripcion);
+            }
+        });
+    }
     
-    const submitBtn = document.getElementById('cicloSubmitBtn');
-    const spinner = submitBtn.querySelector('.spinner-border');
-    const originalText = submitBtn.innerHTML;
-    
+    // Eliminar ciclo
+    if (e.target.closest('.delete-ciclo')) {
+        e.preventDefault();
+        const button = e.target.closest('.delete-ciclo');
+        const id = button.dataset.id;
+        const descripcion = button.dataset.descripcion;
+        
+        Swal.fire({
+            title: '¿Eliminar ciclo?',
+            html: `¿Está seguro de eliminar el ciclo <strong>${descripcion}</strong>?<br><br>
+                  <small class="text-danger">Esta acción no se puede deshacer.</small>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                deleteCiclo(id, descripcion);
+            }
+        });
+    }
+});
+
+// Función para activar ciclo (con ruta completa)
+function activateCiclo(id, descripcion) {
     // Mostrar loading
-    spinner.classList.remove('d-none');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = 'Procesando...';
+    Swal.fire({
+        title: 'Activando ciclo...',
+        text: 'Por favor espere',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
     
-    const formData = new FormData(this);
-    const action = document.getElementById('cicloFormAction').value;
+    // Usar la ruta completa con parámetros
+    const url = `index.php?modulo=ciclo&accion=activate&ciclo_id=${id}`;
     
-    fetch('index.php', {
+    fetch(url, {
         method: 'POST',
-        body: formData
+        credentials: 'same-origin'
     })
-    .then(response => response.json())
+    .then(handleFetchResponse)
     .then(data => {
+        Swal.close();
+        
         if (data.success) {
             Swal.fire({
                 title: '¡Éxito!',
                 text: data.message,
                 icon: 'success',
-                timer: 2000,
+                timer: 1500,
                 showConfirmButton: false
             }).then(() => {
-                cicloModal.hide();
                 window.location.reload();
             });
         } else {
-            Swal.fire('Error', data.message || 'Error al guardar el ciclo', 'error');
+            // Si hay redirección en la respuesta
+            if (data.redirect) {
+                window.location.href = data.redirect;
+                return;
+            }
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'Error al activar el ciclo'
+            });
+        }
+    })
+    .catch(handleAjaxError);
+}
+
+// Función para eliminar ciclo (con ruta completa)
+function deleteCiclo(id, descripcion) {
+    // Mostrar loading
+    Swal.fire({
+        title: 'Eliminando ciclo...',
+        text: 'Por favor espere',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    // Usar la ruta completa con parámetros
+    const url = `index.php?modulo=ciclo&accion=delete&ciclo_id=${id}`;
+    
+    fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin'
+    })
+    .then(handleFetchResponse)
+    .then(data => {
+        Swal.close();
+        
+        if (data.success) {
+            Swal.fire({
+                title: '¡Éxito!',
+                text: data.message,
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => {
+                window.location.reload();
+            });
+        } else {
+            // Si hay redirección en la respuesta
+            if (data.redirect) {
+                window.location.href = data.redirect;
+                return;
+            }
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'Error al eliminar el ciclo'
+            });
+        }
+    })
+    .catch(handleAjaxError);
+}
+
+// Función de depuración
+function debugCiclo() {
+    console.log('=== DEBUG CICLO ===');
+    console.log('cicloModal:', cicloModal);
+    console.log('Bootstrap disponible:', typeof bootstrap !== 'undefined');
+    console.log('=== FIN DEBUG ===');
+}
+
+// Función para probar endpoints (usar en consola)
+function testEndpoint(action, id, extraData = {}) {
+    // Construir URL con parámetros
+    let url = `index.php?modulo=ciclo&accion=${action}`;
+    
+    // Agregar parámetros a la URL
+    if (id) {
+        url += `&ciclo_id=${id}`;
+    }
+    
+    // Agregar parámetros extra a la URL
+    const params = new URLSearchParams(extraData).toString();
+    if (params) {
+        url += `&${params}`;
+    }
+    
+    console.log(`Testing endpoint: ${url}`);
+    
+    fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        console.log('Status:', response.status, response.statusText);
+        return response.text();
+    })
+    .then(text => {
+        console.log('Raw response (first 500 chars):', text.substring(0, 500));
+        try {
+            const json = JSON.parse(text);
+            console.log('Parsed JSON:', json);
+        } catch (e) {
+            console.log('Not valid JSON:', e.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        Swal.fire('Error', 'Error de conexión', 'error');
-    })
-    .finally(() => {
-        // Restaurar botón
-        spinner.classList.add('d-none');
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
     });
-});
-
-// Activar ciclo
-document.querySelectorAll('.set-active').forEach(button => {
-    button.addEventListener('click', function() {
-        const id = this.dataset.id;
-        const descripcion = this.dataset.descripcion;
-        
-        const modal = new bootstrap.Modal(document.getElementById('activateModal'));
-        document.getElementById('modalCicloId').value = id;
-        document.getElementById('activateModalMessage').innerHTML = 
-            `¿Está seguro de activar el ciclo <strong>${descripcion}</strong>?`;
-        
-        modal.show();
-    });
-});
-
-// Eliminar ciclo
-document.querySelectorAll('.delete-ciclo').forEach(button => {
-    button.addEventListener('click', function() {
-        const id = this.dataset.id;
-        const descripcion = this.dataset.descripcion;
-        
-        const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
-        document.getElementById('deleteCicloId').value = id;
-        document.getElementById('deleteModalMessage').innerHTML = 
-            `¿Está seguro de eliminar el ciclo <strong>${descripcion}</strong>?`;
-        
-        modal.show();
-    });
-});
-
-// Enviar formulario de activar ciclo
-document.getElementById('activateForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    formData.append('modulo', 'ciclos');
-    formData.append('accion', 'activate');
-    
-    fetch('index.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            window.location.reload();
-        } else {
-            alert(data.message || 'Error al activar el ciclo');
-        }
-    });
-});
-
-// Enviar formulario de eliminar ciclo
-document.getElementById('deleteForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    formData.append('modulo', 'ciclos');
-    formData.append('accion', 'delete');
-    
-    fetch('index.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            window.location.reload();
-        } else {
-            alert(data.message || 'Error al eliminar el ciclo');
-        }
-    });
-});
+}
 </script>

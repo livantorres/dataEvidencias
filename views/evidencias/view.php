@@ -3,6 +3,90 @@
 $page_title = "Ver Evidencia";
 ?>
 
+<style>
+/* Estilos para edición de nombre de imagen */
+.image-name-editable {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.image-name-editable:hover {
+    background-color: #f0f0f0;
+}
+
+.image-name-input {
+    width: 100%;
+    padding: 2px 4px;
+    border: 1px solid #4e73df;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.image-actions {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    display: none;
+    gap: 5px;
+    z-index: 10;
+}
+
+.image-card:hover .image-actions {
+    display: flex;
+}
+
+.image-actions-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.image-actions-btn:hover {
+    background: white;
+    transform: scale(1.1);
+}
+
+.image-actions-btn.edit {
+    color: #4e73df;
+}
+
+.image-actions-btn.delete {
+    color: #e74a3b;
+}
+
+.rename-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    z-index: 100;
+    display: none;
+}
+
+.image-card {
+    position: relative;
+}
+
+.image-card:hover .rename-tooltip {
+    display: block;
+}
+</style>
+
 <div class="container-fluid">
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -90,30 +174,78 @@ $page_title = "Ver Evidencia";
         </div>
         <div class="card-body">
             <?php if ($imagenes->rowCount() > 0): ?>
-            <div class="row">
-                <?php while ($imagen = $imagenes->fetch(PDO::FETCH_ASSOC)): ?>
-                <div class="col-md-3 mb-4">
-                    <div class="card">
+            <div class="row" id="imagenesContainer">
+                <?php 
+                $imagen_counter = 0;
+                while ($imagen = $imagenes->fetch(PDO::FETCH_ASSOC)): 
+                    $imagen_counter++;
+                ?>
+                <div class="col-md-3 mb-4" id="imagenCard-<?php echo $imagen['id']; ?>">
+                    <div class="card image-card h-100">
+                        <!-- Botones de acción flotantes -->
+                        <div class="image-actions">
+                            <button type="button" 
+                                    class="image-actions-btn edit"
+                                    onclick="renameImage(<?php echo $imagen['id']; ?>)"
+                                    title="Renombrar imagen">
+                                <i class="fas fa-edit fa-sm"></i>
+                            </button>
+                            <?php if ($_SESSION['rol_id'] == 1 || $evidencia['usuario_id'] == $_SESSION['usuario_id']): ?>
+                            <button type="button" 
+                                    class="image-actions-btn delete"
+                                    onclick="deleteImage(<?php echo $imagen['id']; ?>, '<?php echo htmlspecialchars($imagen['nombre_archivo']); ?>')"
+                                    title="Eliminar imagen">
+                                <i class="fas fa-trash fa-sm"></i>
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <!-- Imagen -->
                         <img src="<?php echo htmlspecialchars($imagen['ruta']); ?>" 
                              class="card-img-top" 
                              style="height: 200px; object-fit: cover; cursor: pointer;"
+                             ondblclick="renameImage(<?php echo $imagen['id']; ?>)"
                              onclick="openImageModal('<?php echo htmlspecialchars($imagen['ruta']); ?>')"
                              alt="<?php echo htmlspecialchars($imagen['nombre_archivo']); ?>"
-                             loading="lazy">
+                             loading="lazy"
+                             title="Doble clic para renombrar">
+                        
+                        <!-- Tooltip para renombrar -->
+                        <div class="rename-tooltip">Doble clic para renombrar</div>
+                        
+                        <!-- Información de la imagen -->
                         <div class="card-body p-2">
-                            <small class="text-muted d-block text-truncate">
-                                <?php echo htmlspecialchars($imagen['nombre_archivo']); ?>
-                            </small>
-                            <small class="text-muted">
+                            <!-- Nombre de la imagen (editable) -->
+                            <div class="mb-1">
+                                <span id="imageName-<?php echo $imagen['id']; ?>" 
+                                      class="image-name-editable d-block text-truncate"
+                                      ondblclick="renameImage(<?php echo $imagen['id']; ?>)"
+                                      title="Doble clic para renombrar">
+                                    <?php echo htmlspecialchars($imagen['nombre_archivo']); ?>
+                                </span>
+                                <input type="text" 
+                                       id="imageNameInput-<?php echo $imagen['id']; ?>" 
+                                       class="image-name-input d-none" 
+                                       value="<?php echo htmlspecialchars($imagen['nombre_archivo']); ?>"
+                                       onkeypress="handleImageNameKeypress(event, <?php echo $imagen['id']; ?>)"
+                                       onblur="cancelImageRename(<?php echo $imagen['id']; ?>)">
+                            </div>
+                            
+                            <!-- Tamaño y metadata -->
+                            <small class="text-muted d-block">
+                                <i class="fas fa-hdd me-1"></i>
                                 <?php echo number_format($imagen['tamaño'] / 1024, 2); ?> KB
                             </small>
-                            <?php if ($_SESSION['rol_id'] == 1 || $evidencia['usuario_id'] == $_SESSION['usuario_id']): ?>
-                            <button type="button" 
-                                    class="btn btn-sm btn-danger mt-2 w-100"
-                                    onclick="deleteImage(<?php echo $imagen['id']; ?>, '<?php echo htmlspecialchars($imagen['nombre_archivo']); ?>')">
-                                <i class="fas fa-trash"></i> Eliminar
-                            </button>
-                            <?php endif; ?>
+                            <small class="text-muted d-block">
+                                <i class="fas fa-file-image me-1"></i>
+                                <?php echo htmlspecialchars($imagen['tipo']); ?>
+                            </small>
+                            
+                            <!-- Fecha de subida -->
+                            <small class="text-muted d-block">
+                                <i class="fas fa-calendar me-1"></i>
+                                <?php echo date('d/m/Y H:i', strtotime($imagen['created_at'])); ?>
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -139,102 +271,207 @@ $page_title = "Ver Evidencia";
             </div>
             <div class="modal-body text-center">
                 <img id="modalImage" src="" class="img-fluid" alt="">
+                <div class="mt-3">
+                    <small class="text-muted" id="modalImageName"></small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i> Cerrar
+                </button>
+                <button type="button" class="btn btn-primary" id="renameFromModalBtn">
+                    <i class="fas fa-edit me-1"></i> Renombrar Imagen
+                </button>
+                <a href="#" class="btn btn-success" id="downloadImageBtn" download>
+                    <i class="fas fa-download me-1"></i> Descargar
+                </a>
             </div>
         </div>
     </div>
 </div>
 
 <script>
+// Variables globales
+let currentEditingImageId = null;
+let originalImageName = '';
+
 // Modal para ver imagen en grande
 function openImageModal(imageSrc) {
-    document.getElementById('modalImage').src = imageSrc;
+    const modalImage = document.getElementById('modalImage');
+    modalImage.src = imageSrc;
+    
+    // Obtener nombre de la imagen del atributo alt
+    const imageName = modalImage.alt || imageSrc.split('/').pop();
+    document.getElementById('modalImageName').textContent = imageName;
+    
+    // Configurar botón de descarga
+    document.getElementById('downloadImageBtn').href = imageSrc;
+    document.getElementById('downloadImageBtn').download = imageName;
+    
+    // Configurar botón de renombrar desde modal
+    document.getElementById('renameFromModalBtn').onclick = function() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('imageModal'));
+        modal.hide();
+        
+        // Encontrar el ID de la imagen por su ruta
+        setTimeout(() => {
+            const imageCard = document.querySelector(`img[src="${imageSrc}"]`).closest('.image-card');
+            if (imageCard) {
+                const imageId = imageCard.querySelector('[id^="imageName-"]').id.split('-')[1];
+                renameImage(parseInt(imageId));
+            }
+        }, 300);
+    };
+    
     const modal = new bootstrap.Modal(document.getElementById('imageModal'));
     modal.show();
 }
 
-// Eliminar evidencia - VERSIÓN SIMPLIFICADA
-function confirmDeleteEvi(evidenciaId) {
-    console.log('Eliminar evidencia ID:', evidenciaId);
+// Renombrar imagen (activar modo edición)
+function renameImage(imageId) {
+    // Si ya hay una en edición, cancelar primero
+    if (currentEditingImageId && currentEditingImageId !== imageId) {
+        cancelImageRename(currentEditingImageId);
+    }
+    
+    const nameSpan = document.getElementById(`imageName-${imageId}`);
+    const nameInput = document.getElementById(`imageNameInput-${imageId}`);
+    
+    // Guardar nombre original
+    originalImageName = nameInput.value;
+    
+    // Cambiar a modo edición
+    nameSpan.classList.add('d-none');
+    nameInput.classList.remove('d-none');
+    
+    // Seleccionar texto y enfocar
+    nameInput.focus();
+    nameInput.select();
+    
+    currentEditingImageId = imageId;
+    
+    // Agregar evento de escape
+    nameInput.onkeydown = function(e) {
+        if (e.key === 'Escape') {
+            cancelImageRename(imageId);
+        }
+    };
+}
 
+// Manejar tecla Enter en el input
+function handleImageNameKeypress(event, imageId) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        saveImageName(imageId);
+    }
+}
+
+// Guardar nuevo nombre de imagen
+async function saveImageName(imageId) {
+    const nameInput = document.getElementById(`imageNameInput-${imageId}`);
+    const newName = nameInput.value.trim();
+    
+    // Validar
+    if (!newName) {
+        Swal.fire('Error', 'El nombre no puede estar vacío', 'error');
+        nameInput.value = originalImageName;
+        cancelImageRename(imageId);
+        return;
+    }
+    
+    if (newName === originalImageName) {
+        cancelImageRename(imageId);
+        return;
+    }
+    
+    // Validar extensión
+    const hasExtension = newName.includes('.');
+    if (!hasExtension) {
+        Swal.fire('Error', 'El nombre debe incluir la extensión del archivo (ej: imagen.jpg)', 'error');
+        nameInput.focus();
+        return;
+    }
+    
+    // Mostrar loader
     Swal.fire({
-        title: '¿Eliminar evidencia?',
-        html: `¿Está seguro de eliminar esta evidencia?<br>
-               Se eliminarán todas las imágenes asociadas.<br>
-               <strong>Esta acción no se puede deshacer.</strong>`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: true,
-        allowOutsideClick: false
-    }).then((result) => {
-        if (!result.isConfirmed) return;
-
-        console.log('Usuario confirmó eliminación de evidencia ID:', evidenciaId);
-
-        Swal.fire({
-            title: 'Eliminando...',
-            text: 'Por favor espere',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading()
-        });
-
-        // 🚀 Crear correctamente el FormData
+        title: 'Renombrando...',
+        text: 'Por favor espere',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+    
+    try {
+        // Enviar petición al servidor
         const formData = new FormData();
         formData.append('modulo', 'evidencia');
-        formData.append('accion', 'delete');
-        formData.append('id', evidenciaId);
-
-        console.log('URL de la petición:', 'index.php?modulo=evidencia&accion=delete');
-        console.log('Datos enviados:', {
-            modulo: 'evidencia',
-            accion: 'deleteEvi',
-            id: evidenciaId
-        });
-
-        fetch('index.php?modulo=evidencia&accion=delete', {
+        formData.append('accion', 'renameImage');
+        formData.append('imagen_id', imageId);
+        formData.append('nuevo_nombre', newName);
+        
+        const response = await fetch('index.php?modulo=evidencia&accion=renameImage', {
             method: 'POST',
             body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            credentials: 'include'
-        })
-        .then(response => {
-            console.log('Status response:', response.status, response.statusText);
-            return response.text();
-        })
-        .then(text => {
-            console.log('Respuesta completa:', text.substring(0, 500));
-            try {
-                return JSON.parse(text);
-            } catch (err) {
-                console.error("No es JSON válido:", text);
-                throw new Error("Respuesta no JSON del servidor");
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
             }
-        })
-        .then(data => {
-            Swal.close();
-
-            if (data.success) {
-                Swal.fire({
-                    title: '¡Eliminada!',
-                    text: data.message || 'Evidencia eliminada exitosamente',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false
-                }).then(() => {
-                    window.location.href = 'index.php?modulo=evidencia&accion=index';
-                });
-            } else {
-                Swal.fire('Error', data.message || 'Error al eliminar la evidencia', 'error');
-            }
-        })
-        .catch(error => {
-            Swal.close();
-            Swal.fire('Error', error.message, 'error');
         });
-    });
+        
+        const data = await response.json();
+        
+        Swal.close();
+        
+        if (data.success) {
+            // Actualizar en la interfaz
+            document.getElementById(`imageName-${imageId}`).textContent = newName;
+            document.getElementById(`imageName-${imageId}`).title = newName;
+            
+            // También actualizar el alt de la imagen si existe
+            const imageElement = document.querySelector(`#imagenCard-${imageId} img`);
+            if (imageElement) {
+                imageElement.alt = newName;
+            }
+            
+            // Salir del modo edición
+            cancelImageRename(imageId);
+            
+            // Mostrar mensaje de éxito
+            await Swal.fire({
+                title: '¡Éxito!',
+                text: data.message || 'Nombre cambiado correctamente',
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            
+        } else {
+            Swal.fire('Error', data.message || 'Error al renombrar la imagen', 'error');
+            nameInput.value = originalImageName;
+            cancelImageRename(imageId);
+        }
+        
+    } catch (error) {
+        Swal.close();
+        Swal.fire('Error', 'Error de conexión: ' + error.message, 'error');
+        nameInput.value = originalImageName;
+        cancelImageRename(imageId);
+    }
+}
+
+// Cancelar renombrado
+function cancelImageRename(imageId) {
+    const nameSpan = document.getElementById(`imageName-${imageId}`);
+    const nameInput = document.getElementById(`imageNameInput-${imageId}`);
+    
+    // Restaurar nombre original si se canceló
+    if (currentEditingImageId === imageId) {
+        nameInput.value = originalImageName;
+    }
+    
+    // Volver a modo visual
+    nameSpan.classList.remove('d-none');
+    nameInput.classList.add('d-none');
+    
+    currentEditingImageId = null;
 }
 
 // Eliminar imagen
@@ -274,65 +511,43 @@ async function deleteImage(imageId, imageName) {
         formData.append('accion', 'deleteImage');
         formData.append('imagen_id', imageId);
         
-        console.log('Enviando petición DELETE a:', 'index.php?modulo=evidencia&accion=deleteImage');
-        
         // Enviar petición
         const response = await fetch('index.php?modulo=evidencia&accion=deleteImage', {
             method: 'POST',
             body: formData,
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
-            },
-            credentials: 'same-origin' // Incluir cookies de sesión
+            }
         });
         
-        console.log('Response status:', response.status, response.statusText);
-        
-        // Verificar si la respuesta es exitosa
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Error en respuesta HTTP:', errorText);
-            throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
-        }
-        
-        // Obtener el texto de respuesta
-        const responseText = await response.text();
-        console.log('Respuesta completa:', responseText);
-        
-        // Verificar si es HTML (error)
-        if (responseText.trim().startsWith('<!DOCTYPE') || 
-            responseText.trim().startsWith('<html') ||
-            responseText.includes('<!DOCTYPE')) {
-            console.error('Se recibió HTML en lugar de JSON');
-            throw new Error('El servidor devolvió una página HTML en lugar de datos JSON. Verifica la configuración del backend.');
-        }
-        
-        // Intentar parsear como JSON
-        let data;
-        try {
-            data = JSON.parse(responseText);
-        } catch (parseError) {
-            console.error('Error parseando JSON:', parseError, 'Texto recibido:', responseText.substring(0, 200));
-            throw new Error('Respuesta del servidor no es JSON válido');
-        }
-        
-        console.log('Datos parseados:', data);
+        const data = await response.json();
         
         Swal.close();
         
         if (data.success) {
-            // Eliminar del DOM sin recargar la página
-            const imagenElement = document.getElementById(`imagen-${imageId}`);
-            if (imagenElement) {
-                console.log('Eliminando elemento del DOM:', `imagen-${imageId}`);
-                imagenElement.remove();
-                
-                // Si no quedan imágenes, mostrar mensaje
-                const totalImagenes = document.querySelectorAll('#imagenesExistentes .col-md-3').length;
-                if (totalImagenes === 0) {
-                    document.getElementById('imagenesExistentes').innerHTML = 
-                        '<div class="col-12"><p class="text-muted text-center">No hay imágenes</p></div>';
-                }
+            // Eliminar del DOM
+            const imageCard = document.getElementById(`imagenCard-${imageId}`);
+            if (imageCard) {
+                imageCard.remove();
+            }
+            
+            // Actualizar contador
+            const totalImages = document.querySelectorAll('#imagenesContainer .col-md-3').length;
+            const badge = document.querySelector('.badge.bg-primary');
+            if (badge) {
+                badge.textContent = `${totalImages} imágenes`;
+            }
+            
+            // Si no quedan imágenes
+            if (totalImages === 0) {
+                document.getElementById('imagenesContainer').innerHTML = `
+                    <div class="col-12">
+                        <div class="text-center py-5">
+                            <i class="fas fa-images fa-4x text-muted mb-3"></i>
+                            <h5 class="text-muted">No hay imágenes</h5>
+                        </div>
+                    </div>
+                `;
             }
             
             await Swal.fire({
@@ -343,22 +558,123 @@ async function deleteImage(imageId, imageName) {
                 showConfirmButton: false
             });
         } else {
-            await Swal.fire('Error', data.message || 'Error desconocido al eliminar', 'error');
+            await Swal.fire('Error', data.message || 'Error al eliminar la imagen', 'error');
         }
         
     } catch (error) {
-        console.error('Error completo:', error);
         Swal.close();
-        
-        await Swal.fire({
-            title: 'Error',
-            html: `Error al eliminar la imagen:<br><small>${error.message}</small>`,
-            icon: 'error',
-            confirmButtonText: 'Entendido'
-        });
+        await Swal.fire('Error', 'Error de conexión: ' + error.message, 'error');
     }
 }
+
 // Eliminar evidencia
+function confirmDeleteEvi(evidenciaId) {
+    console.log('Eliminar evidencia ID:', evidenciaId);
 
+    Swal.fire({
+        title: '¿Eliminar evidencia?',
+        html: `¿Está seguro de eliminar esta evidencia?<br>
+               Se eliminarán todas las imágenes asociadas.<br>
+               <strong>Esta acción no se puede deshacer.</strong>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        reverseButtons: true,
+        allowOutsideClick: false
+    }).then((result) => {
+        if (!result.isConfirmed) return;
 
+        console.log('Usuario confirmó eliminación de evidencia ID:', evidenciaId);
+
+        Swal.fire({
+            title: 'Eliminando...',
+            text: 'Por favor espere',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Crear FormData
+        const formData = new FormData();
+        formData.append('modulo', 'evidencia');
+        formData.append('accion', 'delete');
+        formData.append('id', evidenciaId);
+
+        fetch('index.php?modulo=evidencia&accion=delete', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'include'
+        })
+        .then(response => response.text())
+        .then(text => {
+            try {
+                return JSON.parse(text);
+            } catch (err) {
+                console.error("No es JSON válido:", text);
+                throw new Error("Respuesta no JSON del servidor");
+            }
+        })
+        .then(data => {
+            Swal.close();
+
+            if (data.success) {
+                Swal.fire({
+                    title: '¡Eliminada!',
+                    text: data.message || 'Evidencia eliminada exitosamente',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    window.location.href = 'index.php?modulo=evidencia&accion=index';
+                });
+            } else {
+                Swal.fire('Error', data.message || 'Error al eliminar la evidencia', 'error');
+            }
+        })
+        .catch(error => {
+            Swal.close();
+            Swal.fire('Error', error.message, 'error');
+        });
+    });
+}
+
+// Inicializar tooltips de Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar tooltips si Bootstrap los soporta
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+    
+    // Prevenir doble clic en imágenes de abrir el modal Y renombrar
+    document.querySelectorAll('.image-card img').forEach(img => {
+        let clickCount = 0;
+        let clickTimer;
+        
+        img.addEventListener('click', function(e) {
+            clickCount++;
+            if (clickCount === 1) {
+                clickTimer = setTimeout(function() {
+                    // Click simple - abrir modal
+                    openImageModal(img.src);
+                    clickCount = 0;
+                }, 300);
+            } else if (clickCount === 2) {
+                // Doble clic - renombrar
+                clearTimeout(clickTimer);
+                const imageCard = img.closest('.image-card');
+                if (imageCard) {
+                    const imageId = imageCard.querySelector('[id^="imageName-"]').id.split('-')[1];
+                    renameImage(parseInt(imageId));
+                }
+                clickCount = 0;
+            }
+        });
+    });
+});
 </script>

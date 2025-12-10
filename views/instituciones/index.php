@@ -1,32 +1,68 @@
 <?php
-// Habilitar errores
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-ini_set('log_errors', 1);
-ini_set('error_log', __DIR__ . '/logs/php_errors.log');
-
-// Para requests AJAX, evitar redirecciones
-if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
-    strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-    
-    // Evitar redirecciones en AJAX
-    function checkSessionAjax() {
-        if (!isset($_SESSION['usuario_id'])) {
-            header('Content-Type: application/json');
-            echo json_encode([
-                'success' => false,
-                'message' => 'Sesión expirada',
-                'redirect' => 'index.php?modulo=auth&accion=login'
-            ]);
-            exit();
-        }
-    }
-}
-
 // Definir título de página
 $page_title = "Gestión de Instituciones";
 ?>
+
+<style>
+/* Estilos para la vista previa del escudo y paginación */
+.escudo-thumbnail {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.escudo-thumbnail:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.escudo-preview-modal .modal-dialog {
+    max-width: 500px;
+}
+
+.escudo-preview-img {
+    width: 100%;
+    height: auto;
+    max-height: 70vh;
+    object-fit: contain;
+}
+
+.load-more-container {
+    text-align: center;
+    padding: 20px;
+}
+
+.load-more-btn {
+    min-width: 150px;
+}
+
+.load-more-btn .spinner-border {
+    width: 1rem;
+    height: 1rem;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    display: none;
+}
+
+.results-count {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.pagination-info {
+    font-size: 0.85rem;
+}
+</style>
 
 <div class="container-fluid">
     <!-- Header con título y botón de acción -->
@@ -44,151 +80,116 @@ $page_title = "Gestión de Instituciones";
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Listado de Instituciones</h5>
             <div class="d-flex align-items-center">
-                <form method="GET" class="d-flex me-2" style="min-width: 300px;">
-                    <input type="hidden" name="accion" value="index">
-                    <input type="text" name="search" class="form-control form-control-sm" 
-                           placeholder="Buscar institución..." 
-                           value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
-                    <button type="submit" class="btn btn-sm btn-primary ms-2">
-                        <i class="fas fa-search"></i>
-                    </button>
-                    <?php if (isset($_GET['search']) && $_GET['search'] != ''): ?>
-                    <a href="index.php?modulo=institucion&accion=index" class="btn btn-sm btn-outline-secondary ms-2">
-                        <i class="fas fa-times"></i>
-                    </a>
-                    <?php endif; ?>
-                </form>
+                <!-- En el formulario de búsqueda -->
+				<form id="searchForm" method="GET" class="d-flex me-2" style="min-width: 300px;">
+					<input type="hidden" name="modulo" value="institucion">
+					<input type="hidden" name="accion" value="index">
+					<input type="hidden" name="page" value="1" id="currentPage">
+					<input type="text" 
+						   name="search" 
+						   class="form-control form-control-sm" 
+						   placeholder="Buscar por nombre o ciudad..." 
+						   value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>"
+						   id="searchInput"
+						   autocomplete="off">
+					<button type="submit" class="btn btn-sm btn-primary ms-2" id="searchBtn">
+						<i class="fas fa-search"></i>
+					</button>
+					<?php if (isset($_GET['search']) && $_GET['search'] != ''): ?>
+					<a href="index.php?modulo=institucion&accion=index" 
+					   class="btn btn-sm btn-outline-secondary ms-2"
+					   id="clearSearchBtn">
+						<i class="fas fa-times"></i>
+					</a>
+					<?php endif; ?>
+				</form>
             </div>
         </div>
         
-        <div class="card-body">
-            <?php if (isset($instituciones) && $instituciones->rowCount() > 0): ?>
-            <div class="table-responsive">
-                <table class="table table-hover table-striped">
-                    <thead>
-                        <tr>
-                            <th width="50">ID</th>
-                            <th>Nombre</th>
-                            <th>Ciudad</th>
-                            <th>Estado</th>
-                            <th>Escudo</th>
-                            <th>Evidencias</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php while ($institucion = $instituciones->fetch(PDO::FETCH_ASSOC)): ?>
-                        <?php
-                        // Obtener número de evidencias para esta institución
-                        $query_evidencias = "SELECT COUNT(*) as total FROM evidencias WHERE institucion_id = ?";
-                        $stmt_ev = $this->db->prepare($query_evidencias);
-                        $stmt_ev->execute([$institucion['id']]);
-                        $total_evidencias = $stmt_ev->fetch(PDO::FETCH_ASSOC)['total'];
-                        ?>
-                        <tr>
-                            <td><?php echo $institucion['id']; ?></td>
-                            <td>
-                                <strong><?php echo htmlspecialchars($institucion['nombre']); ?></strong>
-                            </td>
-                            <td><?php echo htmlspecialchars($institucion['ciudad']); ?></td>
-                            <td>
-                                <?php if ($institucion['activo'] == 1): ?>
-                                <span class="badge bg-success">Activa</span>
-                                <?php else: ?>
-                                <span class="badge bg-danger">Inactiva</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php
-                                $escudo_path = "storage/instituciones/escudos/{$institucion['id']}.*";
-                                $escudo_files = glob($escudo_path);
-                                if (count($escudo_files) > 0):
-                                ?>
-                                <img src="<?php echo $escudo_files[0]; ?>" 
-                                     class="rounded-circle" 
-                                     style="width: 50px; height: 50px; object-fit: cover;"
-                                     alt="Escudo <?php echo htmlspecialchars($institucion['nombre']); ?>">
-                                <?php else: ?>
-                                <div class="bg-light rounded-circle d-flex align-items-center justify-content-center" 
-                                     style="width: 50px; height: 50px;">
-                                    <i class="fas fa-university text-muted"></i>
-                                </div>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <span class="badge bg-info"><?php echo $total_evidencias; ?></span>
-                            </td>
-                            <td>
-                                <div class="btn-group" role="group">
-                                    <button type="button" 
-                                            class="btn btn-sm btn-outline-primary" 
-                                            onclick="openEditInstitucionModal(<?php echo $institucion['id']; ?>)" 
-                                            title="Editar institución">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    
-                                    <!--<a href="index.php?modulo=evidencias&accion=index&institucion=<?php //echo $institucion['id']; ?>" -->
-									<a href="index.php?modulo=evidencia&accion=index&institucion=<?php echo $institucion['id']; ?>"
-
-                                       class="btn btn-sm btn-outline-success" 
-                                       data-bs-toggle="tooltip" 
-                                       title="Ver evidencias">
-                                        <i class="fas fa-camera"></i>
-                                    </a>
-                                    
-                                    <?php if ($institucion['activo'] == 1): ?>
-                                    <button type="button" 
-                                            class="btn btn-sm btn-outline-warning toggle-status" 
-                                            data-id="<?php echo $institucion['id']; ?>"
-                                            data-action="deactivate"
-                                            data-name="<?php echo htmlspecialchars($institucion['nombre']); ?>"
-                                            data-bs-toggle="tooltip" 
-                                            title="Desactivar institución">
-                                        <i class="fas fa-ban"></i>
-                                    </button>
-                                    <?php else: ?>
-                                    <button type="button" 
-                                            class="btn btn-sm btn-outline-success toggle-status" 
-                                            data-id="<?php echo $institucion['id']; ?>"
-                                            data-action="activate"
-                                            data-name="<?php echo htmlspecialchars($institucion['nombre']); ?>"
-                                            data-bs-toggle="tooltip" 
-                                            title="Activar institución">
-                                        <i class="fas fa-check"></i>
-                                    </button>
-                                    <?php endif; ?>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
+        <!-- Corrección: Verificar si las variables existen -->
+<div class="card-body position-relative">
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+    
+    <!-- Información de resultados -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="results-count" id="resultsCount">
+            <?php 
+            // Usar operador ternario con valor por defecto
+            $total_instituciones = isset($total_instituciones) ? $total_instituciones : 0;
+            $current_count = isset($instituciones) ? $instituciones->rowCount() : 0;
+            $has_more = isset($has_more) ? $has_more : false;
+            ?>
+            <?php if (isset($_GET['search']) && $_GET['search'] != ''): ?>
+            <span id="totalResults"><?php echo $total_instituciones; ?></span> resultados para "<?php echo htmlspecialchars($_GET['search']); ?>"
+            <?php else: ?>
+            <span id="totalResults"><?php echo $total_instituciones; ?></span> instituciones en total
+            <?php endif; ?>
+        </div>
+        <div class="pagination-info">
+            Mostrando <span id="showingCount"><?php echo $current_count; ?></span> de <span id="totalCount"><?php echo $total_instituciones; ?></span>
+        </div>
+    </div>
+    
+    <!-- Tabla de instituciones -->
+    <div class="table-responsive">
+        <table class="table table-hover table-striped" id="institutionsTable">
+            <thead>
+                <tr>
+                    <th width="50">ID</th>
+                    <th>Nombre</th>
+                    <th>Ciudad</th>
+                    <th>Estado</th>
+                    <th>Escudo</th>
+                    <th>Evidencias</th>
+                    <th>Última Evidencia</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="institutionsTbody">
+                <!-- Las instituciones se cargarán aquí -->
+                <?php 
+                // Incluir la tabla parcial solo si $instituciones existe
+                if (isset($instituciones)) {
+                    include 'views/instituciones/partials/institution_table.php';
+                } else {
+                    echo '<tr><td colspan="8" class="text-center py-4">Cargando instituciones...</td></tr>';
+                }
+                ?>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Contenedor para "Cargar más" -->
+    <div id="loadMoreContainer" class="load-more-container" 
+         style="<?php echo (!$has_more || $current_count == 0) ? 'display: none;' : ''; ?>">
+                <button type="button" class="btn btn-outline-primary load-more-btn" id="loadMoreBtn" onclick="loadMoreInstitutions()">
+                    <span class="btn-text">Cargar más instituciones</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                </button>
+                <small class="text-muted d-block mt-2">
+                    <span id="remainingCount"><?php echo max(0, $total_instituciones - $current_count); ?></span> instituciones restantes
+                </small>
             </div>
             
-            <!-- Paginación (si aplica) -->
-            <nav aria-label="Page navigation">
-                <ul class="pagination justify-content-center">
-                    <li class="page-item disabled">
-                        <a class="page-link" href="#" tabindex="-1">Anterior</a>
-                    </li>
-                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                    <li class="page-item"><a class="page-link" href="#">2</a></li>
-                    <li class="page-item"><a class="page-link" href="#">3</a></li>
-                    <li class="page-item">
-                        <a class="page-link" href="#">Siguiente</a>
-                    </li>
-                </ul>
-            </nav>
-            
-            <?php else: ?>
-            <div class="text-center py-5">
+            <?php if ($current_count == 0): ?>
+            <div class="text-center py-5" id="noResultsMessage">
                 <div class="mb-4">
                     <i class="fas fa-university fa-4x text-muted"></i>
                 </div>
-                <h4 class="text-muted mb-3">No hay instituciones registradas</h4>
+                <h4 class="text-muted mb-3">
+                    <?php if (isset($_GET['search']) && $_GET['search'] != ''): ?>
+                    No se encontraron instituciones
+                    <?php else: ?>
+                    No hay instituciones registradas
+                    <?php endif; ?>
+                </h4>
                 <p class="text-muted mb-4">
                     <?php if (isset($_GET['search']) && $_GET['search'] != ''): ?>
-                    No se encontraron instituciones que coincidan con "<?php echo htmlspecialchars($_GET['search']); ?>"
+                    No hay instituciones que coincidan con "<?php echo htmlspecialchars($_GET['search']); ?>"
                     <?php else: ?>
                     Comience agregando su primera institución
                     <?php endif; ?>
@@ -207,6 +208,33 @@ $page_title = "Gestión de Instituciones";
     </div>
 </div>
 
+<!-- Modal para vista previa del escudo -->
+<div class="modal fade escudo-preview-modal" id="escudoPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="escudoModalTitle">Escudo de Institución</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="escudoPreviewImage" src="" class="escudo-preview-img img-fluid rounded" alt="">
+                <div class="mt-3">
+                    <h6 id="escudoInstitucionNombre"></h6>
+                    <small class="text-muted" id="escudoImageInfo"></small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i> Cerrar
+                </button>
+                <a href="#" id="escudoDownloadBtn" class="btn btn-primary" download>
+                    <i class="fas fa-download me-1"></i> Descargar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal para cambiar estado -->
 <div class="modal fade" id="statusModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -216,6 +244,8 @@ $page_title = "Gestión de Instituciones";
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="statusForm" method="POST">
+                <input type="hidden" name="modulo" value="institucion">
+                <input type="hidden" name="accion" value="toggleStatus">
                 <div class="modal-body">
                     <input type="hidden" name="institucion_id" id="modalInstitucionId">
                     <input type="hidden" name="action" id="modalAction">
@@ -243,8 +273,6 @@ $page_title = "Gestión de Instituciones";
                 <div class="modal-body">
                     <input type="hidden" name="id" id="institucionId">
                     <input type="hidden" name="modulo" value="institucion">
-
-					
                     <input type="hidden" name="accion" id="formAction" value="create">
                     
                     <div class="row">
@@ -296,7 +324,8 @@ $page_title = "Gestión de Instituciones";
                                             <button type="button" 
                                                     class="btn btn-sm btn-outline-danger" 
                                                     id="removeEscudoBtn" 
-                                                    style="display: none;">
+                                                    style="display: none;"
+                                                    onclick="removeEscudoPreview()">
                                                 <i class="fas fa-trash me-1"></i> Quitar
                                             </button>
                                         </div>
@@ -325,24 +354,362 @@ $page_title = "Gestión de Instituciones";
 <script>
 // Variables globales
 let institucionModal = null;
+let escudoPreviewModal = null;
+let currentPage = <?php echo isset($_GET['page']) ? (int)$_GET['page'] : 1; ?>;
+let isLoading = false;
+let hasMore = <?php echo isset($has_more) && $has_more ? 'true' : 'false'; ?>;
+let totalInstitutions = <?php echo isset($total_instituciones) ? $total_instituciones : 0; ?>;
+let showingCount = <?php echo isset($instituciones) ? $instituciones->rowCount() : 0; ?>;
 
-// Inicializar modal solo cuando Bootstrap esté cargado
+// Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', function() {
-    // Verificar si Bootstrap está disponible
+    // Inicializar modales de Bootstrap
     if (typeof bootstrap !== 'undefined') {
         institucionModal = new bootstrap.Modal(document.getElementById('institucionModal'));
-    } else {
-        console.error('Bootstrap no está cargado');
+        escudoPreviewModal = new bootstrap.Modal(document.getElementById('escudoPreviewModal'));
     }
     
     // Inicializar tooltips
-    if (typeof bootstrap !== 'undefined') {
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
+    initTooltips();
+    
+    // Configurar vista previa del escudo
+    setupEscudoPreview();
+    
+    // Configurar búsqueda
+    setupSearch();
+    
+    // Configurar scroll infinito opcional
+    setupInfiniteScroll();
+    
+    // Actualizar contadores iniciales
+    updateCounters();
+});
+
+// Inicializar tooltips de Bootstrap
+function initTooltips() {
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        // Inicializar tooltips existentes
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(tooltipTriggerEl => {
+            new bootstrap.Tooltip(tooltipTriggerEl);
         });
     }
-});
+}
+
+// Actualizar tooltips después de cargar más contenido
+function updateTooltips() {
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        // Limpiar tooltips antiguos
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            const instance = bootstrap.Tooltip.getInstance(el);
+            if (instance) {
+                instance.dispose();
+            }
+        });
+        
+        // Inicializar nuevos tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(tooltipTriggerEl => {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+}
+
+// Configurar vista previa del escudo
+function setupEscudoPreview() {
+    const escudoInput = document.getElementById('escudoInput');
+    if (escudoInput) {
+        escudoInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const file = this.files[0];
+                
+                // Validar tamaño (5MB máximo)
+                if (file.size > 5 * 1024 * 1024) {
+                    Swal.fire('Error', 'La imagen no debe superar los 5MB', 'error');
+                    this.value = '';
+                    return;
+                }
+                
+                // Validar tipo
+                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+                if (!allowedTypes.includes(file.type)) {
+                    Swal.fire('Error', 'Solo se permiten imágenes JPG, PNG o GIF', 'error');
+                    this.value = '';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('escudoPreview').src = e.target.result;
+                    document.getElementById('removeEscudoBtn').style.display = 'inline-block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+}
+
+// Quitar vista previa del escudo
+function removeEscudoPreview() {
+    document.getElementById('escudoPreview').src = 'assets/img/default-institution.png';
+    document.getElementById('escudoInput').value = '';
+    document.getElementById('removeEscudoBtn').style.display = 'none';
+}
+
+// Vista previa del escudo en modal
+function viewEscudoPreview(imageSrc, institucionNombre) {
+    if (!escudoPreviewModal) {
+        alert('No se pudo cargar el visor de imágenes');
+        return;
+    }
+    
+    const img = document.getElementById('escudoPreviewImage');
+    img.src = imageSrc;
+    
+    document.getElementById('escudoModalTitle').textContent = 'Escudo de Institución';
+    document.getElementById('escudoInstitucionNombre').textContent = institucionNombre;
+    
+    // Configurar botón de descarga
+    const downloadBtn = document.getElementById('escudoDownloadBtn');
+    downloadBtn.href = imageSrc;
+    downloadBtn.download = 'escudo_' + institucionNombre.replace(/\s+/g, '_') + '.jpg';
+    
+    // Mostrar información de la imagen
+    const imgInfo = document.getElementById('escudoImageInfo');
+    const tempImg = new Image();
+    tempImg.src = imageSrc;
+    tempImg.onload = function() {
+        imgInfo.textContent = `${this.naturalWidth} × ${this.naturalHeight} px`;
+    };
+    
+    escudoPreviewModal.show();
+}
+
+// Configurar búsqueda
+function setupSearch() {
+    const searchForm = document.getElementById('searchForm');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            searchInstitutions();
+        });
+        
+        // Búsqueda en tiempo real opcional (con delay)
+        const searchInput = document.getElementById('searchInput');
+        let searchTimeout;
+        
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (this.value.length >= 2 || this.value.length === 0) {
+                    searchInstitutions();
+                }
+            }, 500);
+        });
+    }
+}
+
+// Buscar instituciones
+// Corrección en la función searchInstitutions():
+function searchInstitutions() {
+    const searchForm = document.getElementById('searchForm');
+    const searchValue = document.getElementById('searchInput').value;
+    
+    // Resetear a página 1 cuando se busca
+    document.getElementById('currentPage').value = 1;
+    currentPage = 1;
+    
+    // Mostrar loading
+    showLoading();
+    
+    // Ocultar mensaje de no resultados
+    const noResultsMessage = document.getElementById('noResultsMessage');
+    if (noResultsMessage) {
+        noResultsMessage.style.display = 'none';
+    }
+    
+    // Construir URL correctamente
+    const url = `index.php?modulo=institucion&accion=index&search=${encodeURIComponent(searchValue)}&page=1`;
+    
+    fetch(url, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        // Verificar si la respuesta es JSON
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            return response.json();
+        } else {
+            throw new Error("La respuesta no es JSON");
+        }
+    })
+    .then(data => {
+        hideLoading();
+        
+        if (data.success) {
+            // Actualizar tabla
+            document.getElementById('institutionsTbody').innerHTML = data.html;
+            
+            // Actualizar variables
+            hasMore = data.has_more;
+            totalInstitutions = data.total;
+            showingCount = data.showing_count || (data.page * 20);
+            
+            // Actualizar contadores
+            updateCounters();
+            
+            // Mostrar/ocultar botón "Cargar más"
+            const loadMoreContainer = document.getElementById('loadMoreContainer');
+            if (data.html.includes('<tr>') && hasMore) {
+                loadMoreContainer.style.display = 'block';
+            } else {
+                loadMoreContainer.style.display = 'none';
+            }
+            
+            // Actualizar tooltips
+            updateTooltips();
+            
+        } else {
+            Swal.fire('Error', data.message || 'Error al buscar instituciones', 'error');
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        console.error('Error:', error);
+        Swal.fire('Error', 'Error de conexión: ' + error.message, 'error');
+    });
+}
+
+// Limpiar búsqueda
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('currentPage').value = 1;
+    searchInstitutions();
+}
+
+// Cargar más instituciones
+function loadMoreInstitutions() {
+    if (isLoading || !hasMore) return;
+    
+    isLoading = true;
+    currentPage++;
+    
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    const btnText = loadMoreBtn.querySelector('.btn-text');
+    const spinner = loadMoreBtn.querySelector('.spinner-border');
+    
+    // Mostrar loading en el botón
+    btnText.textContent = 'Cargando...';
+    spinner.classList.remove('d-none');
+    loadMoreBtn.disabled = true;
+    
+    const searchValue = document.getElementById('searchInput').value;
+    const url = searchValue 
+        ? `index.php?modulo=institucion&accion=index&search=${encodeURIComponent(searchValue)}&page=${currentPage}`
+        : `index.php?modulo=institucion&accion=index&page=${currentPage}`;
+    
+    fetch(url, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        isLoading = false;
+        
+        // Restaurar botón
+        btnText.textContent = 'Cargar más instituciones';
+        spinner.classList.add('d-none');
+        loadMoreBtn.disabled = false;
+        
+        if (data.success) {
+            // Agregar nuevas filas a la tabla
+            document.getElementById('institutionsTbody').insertAdjacentHTML('beforeend', data.html);
+            
+            // Actualizar variables
+            hasMore = data.has_more;
+            showingCount += 20; // Asumiendo 20 por página
+            
+            // Actualizar contadores
+            updateCounters();
+            
+            // Ocultar botón si no hay más
+            if (!hasMore) {
+                document.getElementById('loadMoreContainer').style.display = 'none';
+            }
+            
+            // Actualizar tooltips
+            updateTooltips();
+            
+        } else {
+            Swal.fire('Error', 'Error al cargar más instituciones', 'error');
+            currentPage--; // Revertir página en caso de error
+        }
+    })
+    .catch(error => {
+        isLoading = false;
+        
+        // Restaurar botón
+        btnText.textContent = 'Cargar más instituciones';
+        spinner.classList.add('d-none');
+        loadMoreBtn.disabled = false;
+        currentPage--; // Revertir página en caso de error
+        
+        console.error('Error:', error);
+        Swal.fire('Error', 'Error de conexión', 'error');
+    });
+}
+
+// Configurar scroll infinito (opcional)
+function setupInfiniteScroll() {
+    window.addEventListener('scroll', function() {
+        // Si prefieres scroll infinito en lugar de botón
+        // Descomenta este código y oculta el botón "Cargar más"
+        
+        /*
+        const loadMoreContainer = document.getElementById('loadMoreContainer');
+        if (!loadMoreContainer || loadMoreContainer.style.display === 'none') return;
+        
+        const containerRect = loadMoreContainer.getBoundingClientRect();
+        const windowHeight = window.innerHeight;
+        
+        // Cargar más cuando el contenedor esté cerca de la parte inferior
+        if (containerRect.top <= windowHeight + 100) {
+            loadMoreInstitutions();
+        }
+        */
+    });
+}
+
+// Actualizar contadores
+function updateCounters() {
+    document.getElementById('totalResults').textContent = totalInstitutions;
+    document.getElementById('showingCount').textContent = showingCount;
+    document.getElementById('totalCount').textContent = totalInstitutions;
+    document.getElementById('remainingCount').textContent = Math.max(0, totalInstitutions - showingCount);
+    
+    // Actualizar información de paginación
+    const resultsCount = document.getElementById('resultsCount');
+    const searchValue = document.getElementById('searchInput').value;
+    
+    if (searchValue) {
+        resultsCount.innerHTML = `<span id="totalResults">${totalInstitutions}</span> resultados para "${searchValue}"`;
+    } else {
+        resultsCount.innerHTML = `<span id="totalResults">${totalInstitutions}</span> instituciones en total`;
+    }
+}
+
+// Mostrar loading
+function showLoading() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+// Ocultar loading
+function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
 
 // Función para abrir modal de crear institución
 function openCreateInstitucionModal() {
@@ -369,9 +736,7 @@ function openEditInstitucionModal(id) {
         return;
     }
     
-   // fetch(`index.php?modulo=instituciones&accion=edit&id=${id}`)
-	fetch(`index.php?modulo=institucion&accion=edit&id=${id}`)
-
+    fetch(`index.php?modulo=institucion&accion=edit&id=${id}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -403,25 +768,6 @@ function openEditInstitucionModal(id) {
         });
 }
 
-// Vista previa del escudo
-document.getElementById('escudoInput').addEventListener('change', function(e) {
-    if (this.files && this.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('escudoPreview').src = e.target.result;
-            document.getElementById('removeEscudoBtn').style.display = 'inline-block';
-        };
-        reader.readAsDataURL(this.files[0]);
-    }
-});
-
-// Quitar escudo
-document.getElementById('removeEscudoBtn').addEventListener('click', function() {
-    document.getElementById('escudoPreview').src = 'assets/img/default-institution.png';
-    document.getElementById('escudoInput').value = '';
-    this.style.display = 'none';
-});
-
 // Enviar formulario de institución
 document.getElementById('institucionForm').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -438,10 +784,8 @@ document.getElementById('institucionForm').addEventListener('submit', function(e
     const formData = new FormData(this);
     const action = document.getElementById('formAction').value;
     
-    // IMPORTANTE: Agregar parámetros a la URL
+    // URL de la solicitud
     const url = `index.php?modulo=institucion&accion=${action}`;
-    
-    console.log("URL de la solicitud:", url);
     
     fetch(url, {
         method: 'POST',
@@ -450,22 +794,7 @@ document.getElementById('institucionForm').addEventListener('submit', function(e
             'X-Requested-With': 'XMLHttpRequest'
         }
     })
-    .then(response => {
-        console.log("Respuesta recibida. Status:", response.status);
-        console.log("Content-Type:", response.headers.get('Content-Type'));
-        
-        // Verificar si es JSON
-        const contentType = response.headers.get('Content-Type');
-        if (contentType && contentType.includes('application/json')) {
-            return response.json();
-        } else {
-            // Si no es JSON, obtener texto para debug
-            return response.text().then(text => {
-                console.error("No es JSON. Contenido recibido:", text.substring(0, 500));
-                throw new Error('El servidor no devolvió JSON. Posible error o redirección.');
-            });
-        }
-    })
+    .then(response => response.json())
     .then(data => {
         if (data.success) {
             Swal.fire({
@@ -478,6 +807,7 @@ document.getElementById('institucionForm').addEventListener('submit', function(e
                 if (institucionModal) {
                     institucionModal.hide();
                 }
+                // Recargar la página para mostrar la nueva institución
                 window.location.reload();
             });
         } else {
@@ -485,7 +815,7 @@ document.getElementById('institucionForm').addEventListener('submit', function(e
         }
     })
     .catch(error => {
-        console.error('Error completo:', error);
+        console.error('Error:', error);
         Swal.fire('Error', 'Error de conexión: ' + error.message, 'error');
     })
     .finally(() => {
@@ -497,11 +827,12 @@ document.getElementById('institucionForm').addEventListener('submit', function(e
 });
 
 // Manejar cambio de estado
-document.querySelectorAll('.toggle-status').forEach(button => {
-    button.addEventListener('click', function() {
-        const id = this.dataset.id;
-        const action = this.dataset.action;
-        const name = this.dataset.name;
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.toggle-status')) {
+        const button = e.target.closest('.toggle-status');
+        const id = button.dataset.id;
+        const action = button.dataset.action;
+        const name = button.dataset.name;
         
         const modal = new bootstrap.Modal(document.getElementById('statusModal'));
         const title = document.getElementById('statusModalTitle');
@@ -512,27 +843,37 @@ document.querySelectorAll('.toggle-status').forEach(button => {
         
         if (action === 'deactivate') {
             title.textContent = 'Desactivar Institución';
-            message.innerHTML = `¿Está seguro de desactivar la institución <strong>${name}</strong>?<br>
-                                <small class="text-muted">No podrá registrar nuevas evidencias para esta institución.</small>`;
+            message.innerHTML = `
+                ¿Está seguro de desactivar la institución <strong>${name}</strong>?<br>
+                <small class="text-muted">
+                    • No podrá registrar nuevas evidencias para esta institución<br>
+                    • No aparecerá en el listado principal<br>
+                    • Las evidencias existentes se mantendrán
+                </small>`;
         } else {
             title.textContent = 'Activar Institución';
-            message.innerHTML = `¿Está seguro de activar la institución <strong>${name}</strong>?`;
+            message.innerHTML = `
+                ¿Está seguro de activar la institución <strong>${name}</strong>?<br>
+                <small class="text-muted">La institución aparecerá nuevamente en todos los listados</small>`;
         }
         
         modal.show();
-    });
+    }
 });
 
 // Enviar formulario de cambio de estado
 document.getElementById('statusForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
-    const formData = new FormData(this);
-    formData.append('modulo', 'institucion');
-    formData.append('accion', 'toggleStatus');
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
     
-    //fetch('index.php', {
-	fetch('index.php?modulo=institucion&accion=toggleStatus', {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Procesando...';
+    
+    const formData = new FormData(this);
+    
+    fetch('index.php', {
         method: 'POST',
         body: formData
     })
@@ -541,12 +882,27 @@ document.getElementById('statusForm').addEventListener('submit', function(e) {
         if (data.success) {
             window.location.reload();
         } else {
-            alert(data.message || 'Error al cambiar el estado');
+            Swal.fire('Error', data.message || 'Error al cambiar el estado', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error de conexión');
+        Swal.fire('Error', 'Error de conexión', 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
     });
+});
+
+// Manejar clic en escudos de la tabla
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('escudo-thumbnail')) {
+        const imageSrc = e.target.src;
+        const altText = e.target.alt || 'Escudo de Institución';
+        const institucionNombre = altText.replace('Escudo ', '');
+        
+        viewEscudoPreview(imageSrc, institucionNombre);
+    }
 });
 </script>

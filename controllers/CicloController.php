@@ -15,28 +15,43 @@ class CicloController {
         $this->checkSession();
         $this->checkAdmin();
         
-        $ciclos = $this->ciclo->getAll();
-        $cicloActual = $this->ciclo->getActiveCiclo();
-        
-        $page_title = "Gestión de Ciclos";
-        
-        include 'includes/header.php';
-        // include 'includes/sidebar.php';
-        include 'views/ciclos/index.php';
-        include 'includes/footer.php';
+        try {
+            $ciclos = $this->ciclo->getAll();
+            $cicloActual = $this->ciclo->getActiveCiclo();
+            
+            $db = $this->db;
+            $page_title = "Gestión de Ciclos";
+            
+            include 'includes/header.php';
+            include 'views/ciclos/index.php';
+            include 'includes/footer.php';
+            
+        } catch (Exception $e) {
+            error_log("Error en CicloController::index(): " . $e->getMessage());
+            
+            $page_title = "Error";
+            include 'includes/header.php';
+            echo '<div class="container mt-4">';
+            echo '<div class="alert alert-danger">Error al cargar los ciclos: ' . htmlspecialchars($e->getMessage()) . '</div>';
+            echo '</div>';
+            include 'includes/footer.php';
+        }
     }
 
     // Crear ciclo via modal (AJAX)
     public function create() {
-        $this->checkSession();
-        $this->checkAdmin();
+        $this->checkAjaxSession();
+        $this->checkAjaxAdmin();
+        
+        header('Content-Type: application/json; charset=utf-8');
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $response = ['success' => false, 'message' => '', 'data' => null];
             
             try {
-                $descripcion = trim($_POST['descripcion'] ?? '');
-                $activo = isset($_POST['activo']) ? 1 : 0;
+                // Obtener datos de POST o de parámetros GET
+                $descripcion = trim($_POST['descripcion'] ?? $_GET['descripcion'] ?? '');
+                $activo = isset($_POST['activo']) ? 1 : (isset($_GET['activo']) ? 1 : 0);
                 
                 if (empty($descripcion)) {
                     throw new Exception("La descripción es requerida");
@@ -54,7 +69,8 @@ class CicloController {
                 
                 // Si se activa este ciclo, desactivar los demás
                 if ($activo == 1) {
-                    $this->db->query("UPDATE ciclos SET activo = 0");
+                    $updateStmt = $this->db->prepare("UPDATE ciclos SET activo = 0");
+                    $updateStmt->execute();
                 }
                 
                 // Crear ciclo
@@ -84,24 +100,58 @@ class CicloController {
                 $response['message'] = $e->getMessage();
             }
             
-            header('Content-Type: application/json');
-            echo json_encode($response);
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
             exit();
         }
     }
 
     // Editar ciclo via modal (AJAX)
     public function edit() {
-        $this->checkSession();
-        $this->checkAdmin();
+        $this->checkAjaxSession();
+        $this->checkAjaxAdmin();
         
+        header('Content-Type: application/json; charset=utf-8');
+        
+        // GET para obtener datos
+        if ($_SERVER['REQUEST_METHOD'] == 'GET') {
+            try {
+                $id = $_GET['id'] ?? 0;
+                
+                if (empty($id)) {
+                    throw new Exception("ID no proporcionado");
+                }
+                
+                $ciclo = $this->ciclo->getById($id);
+                
+                if ($ciclo) {
+                    echo json_encode([
+                        'success' => true, 
+                        'data' => $ciclo
+                    ], JSON_UNESCAPED_UNICODE);
+                } else {
+                    echo json_encode([
+                        'success' => false, 
+                        'message' => 'Ciclo no encontrado'
+                    ], JSON_UNESCAPED_UNICODE);
+                }
+            } catch (Exception $e) {
+                echo json_encode([
+                    'success' => false, 
+                    'message' => $e->getMessage()
+                ], JSON_UNESCAPED_UNICODE);
+            }
+            exit();
+        }
+        
+        // POST para actualizar
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $response = ['success' => false, 'message' => '', 'data' => null];
             
             try {
-                $id = $_POST['id'] ?? 0;
-                $descripcion = trim($_POST['descripcion'] ?? '');
-                $activo = isset($_POST['activo']) ? 1 : 0;
+                // Obtener datos de POST o de parámetros GET
+                $id = $_POST['id'] ?? $_GET['id'] ?? 0;
+                $descripcion = trim($_POST['descripcion'] ?? $_GET['descripcion'] ?? '');
+                $activo = isset($_POST['activo']) ? 1 : (isset($_GET['activo']) ? 1 : 0);
                 
                 if (empty($id) || empty($descripcion)) {
                     throw new Exception("Datos incompletos");
@@ -120,7 +170,8 @@ class CicloController {
                 
                 // Si se activa este ciclo, desactivar los demás
                 if ($activo == 1) {
-                    $this->db->query("UPDATE ciclos SET activo = 0");
+                    $updateStmt = $this->db->prepare("UPDATE ciclos SET activo = 0");
+                    $updateStmt->execute();
                     
                     // Actualizar sesión
                     $_SESSION['ciclo_actual'] = $id;
@@ -153,35 +204,24 @@ class CicloController {
                 $response['message'] = $e->getMessage();
             }
             
-            header('Content-Type: application/json');
-            echo json_encode($response);
-            exit();
-        }
-        
-        // GET request: devolver datos del ciclo
-        if (isset($_GET['id'])) {
-            $id = $_GET['id'];
-            $ciclo = $this->ciclo->getById($id);
-            
-            if ($ciclo) {
-                echo json_encode(['success' => true, 'data' => $ciclo]);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Ciclo no encontrado']);
-            }
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
             exit();
         }
     }
 
     // Activar ciclo via AJAX
     public function activate() {
-        $this->checkSession();
-        $this->checkAdmin();
+        $this->checkAjaxSession();
+        $this->checkAjaxAdmin();
+        
+        header('Content-Type: application/json; charset=utf-8');
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $response = ['success' => false, 'message' => ''];
             
             try {
-                $id = $_POST['ciclo_id'] ?? 0;
+                // Obtener ID de POST o GET
+                $id = $_POST['ciclo_id'] ?? $_GET['ciclo_id'] ?? 0;
                 
                 if (empty($id)) {
                     throw new Exception("Datos incompletos");
@@ -194,7 +234,8 @@ class CicloController {
                 }
                 
                 // Desactivar todos los ciclos
-                $this->db->query("UPDATE ciclos SET activo = 0");
+                $updateAllStmt = $this->db->prepare("UPDATE ciclos SET activo = 0");
+                $updateAllStmt->execute();
                 
                 // Activar el ciclo seleccionado
                 $query = "UPDATE ciclos SET activo = 1 WHERE id = :id";
@@ -216,22 +257,24 @@ class CicloController {
                 $response['message'] = $e->getMessage();
             }
             
-            header('Content-Type: application/json');
-            echo json_encode($response);
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
             exit();
         }
     }
 
     // Eliminar ciclo via AJAX
     public function delete() {
-        $this->checkSession();
-        $this->checkAdmin();
+        $this->checkAjaxSession();
+        $this->checkAjaxAdmin();
+        
+        header('Content-Type: application/json; charset=utf-8');
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $response = ['success' => false, 'message' => ''];
             
             try {
-                $id = $_POST['ciclo_id'] ?? 0;
+                // Obtener ID de POST o GET
+                $id = $_POST['ciclo_id'] ?? $_GET['ciclo_id'] ?? 0;
                 
                 if (empty($id)) {
                     throw new Exception("Datos incompletos");
@@ -250,7 +293,7 @@ class CicloController {
                 
                 // Verificar si es el ciclo activo
                 $ciclo = $this->ciclo->getById($id);
-                if ($ciclo['activo'] == 1) {
+                if ($ciclo && $ciclo['activo'] == 1) {
                     throw new Exception("No se puede eliminar el ciclo activo. Active otro ciclo primero.");
                 }
                 
@@ -270,12 +313,36 @@ class CicloController {
                 $response['message'] = $e->getMessage();
             }
             
-            header('Content-Type: application/json');
-            echo json_encode($response);
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
             exit();
         }
     }
 
+    // Métodos de verificación para AJAX
+    private function checkAjaxSession() {
+        if (!isset($_SESSION['usuario_id'])) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Sesión expirada. Por favor, inicie sesión nuevamente.',
+                'redirect' => 'index.php?modulo=auth&accion=login'
+            ], JSON_UNESCAPED_UNICODE);
+            exit();
+        }
+    }
+
+    private function checkAjaxAdmin() {
+        if (!isset($_SESSION['rol_id']) || $_SESSION['rol_id'] != 1) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false, 
+                'message' => 'No tiene permisos para realizar esta acción'
+            ], JSON_UNESCAPED_UNICODE);
+            exit();
+        }
+    }
+
+    // Métodos de verificación para vistas normales
     private function checkSession() {
         if (!isset($_SESSION['usuario_id'])) {
             header("Location: index.php?modulo=auth&accion=login");
@@ -284,15 +351,10 @@ class CicloController {
     }
 
     private function checkAdmin() {
-        if ($_SESSION['rol_id'] != 1) {
-            if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-                echo json_encode(['success' => false, 'message' => 'No tiene permisos para esta acción']);
-                exit();
-            } else {
-                $_SESSION['error'] = "No tiene permisos para acceder a esta sección";
-                header("Location: index.php?modulo=dashboard&accion=index");
-                exit();
-            }
+        if (!isset($_SESSION['rol_id']) || $_SESSION['rol_id'] != 1) {
+            $_SESSION['error'] = "No tiene permisos para acceder a esta sección";
+            header("Location: index.php?modulo=dashboard&accion=index");
+            exit();
         }
     }
 }

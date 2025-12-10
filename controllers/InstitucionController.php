@@ -11,25 +11,74 @@ class InstitucionController {
         $this->institucion = new Institucion($this->db);
     }
 
-    public function index() {
-        $this->checkSession();
-        $this->checkAdmin();
-        
-        $keyword = isset($_GET['search']) ? $_GET['search'] : '';
-        
-        if ($keyword) {
-            $instituciones = $this->institucion->search($keyword);
-        } else {
-            $instituciones = $this->institucion->getAll();
-        }
-        
-        $page_title = "Gestión de Instituciones";
-        
-        include 'includes/header.php';
-        // include 'includes/sidebar.php';
-        include 'views/instituciones/index.php';
-        include 'includes/footer.php';
+	public function index() {
+    $this->checkSession();
+    $this->checkAdmin();
+    
+    $keyword = isset($_GET['search']) ? trim($_GET['search']) : '';
+    $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+    $limit = 10;
+    $offset = ($page - 1) * $limit;
+    
+    $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+              strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+    
+    if ($keyword) {
+        $instituciones = $this->institucion->search($keyword, $limit, $offset);
+        $total_instituciones = $this->institucion->countSearch($keyword);
+    } else {
+        $instituciones = $this->institucion->getAll($limit, $offset);
+        $total_instituciones = $this->institucion->countAll();
     }
+    
+    $current_count = $instituciones->rowCount();
+    $total_pages = ceil($total_instituciones / $limit);
+    $has_more = $page < $total_pages;
+    
+    if ($isAjax) {
+        ob_start();
+        include 'views/instituciones/partials/institution_table.php';
+        $html = ob_get_clean();
+        
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'html' => $html,
+            'has_more' => $has_more,
+            'total' => $total_instituciones,
+            'page' => $page,
+            'showing_count' => $current_count,
+            'total_pages' => $total_pages
+        ]);
+        exit();
+    }
+    
+    // Variables para la vista completa
+    $page_title = "Gestión de Instituciones";
+    
+    include 'includes/header.php';
+    include 'views/instituciones/index.php';
+    include 'includes/footer.php';
+}
+    /*public function index() {
+		$this->checkSession();
+		$this->checkAdmin();
+		
+		$keyword = isset($_GET['search']) ? $_GET['search'] : '';
+		
+		if ($keyword) {
+			$instituciones = $this->institucion->search($keyword);
+		} else {
+			$instituciones = $this->institucion->getAll();
+		}
+		
+		$page_title = "Gestión de Instituciones";
+		
+		include 'includes/header.php';
+		// include 'includes/sidebar.php'; // Comentado si no existe
+		include 'views/instituciones/index.php';
+		include 'includes/footer.php';
+	}*/
 
     // Crear institución via modal (AJAX)
 	public function create() {

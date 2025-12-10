@@ -734,7 +734,8 @@ class EvidenciaController {
         
         // Crear archivo ZIP
         $zip = new ZipArchive();
-        $zip_filename = "evidencia_{$id}_{$evidencia['institucion_nombre']}_{$evidencia['fecha']}.zip";
+        // $zip_filename = "evidencia_{$id}_{$evidencia['institucion_nombre']}_{$evidencia['fecha']}.zip";
+        $zip_filename = "evidencia_{$evidencia['descripcion']}_{$evidencia['fecha']}_{$evidencia['institucion_nombre']}.zip";
         $temp_zip_path = sys_get_temp_dir() . '/' . $zip_filename;
         
         if ($zip->open($temp_zip_path, ZipArchive::CREATE) === TRUE) {
@@ -875,6 +876,135 @@ public function countImages($evidencia_id) {
     $stmt->execute();
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     return $result['total'];
+}
+
+// En EvidenciaController.php, agregar este método
+public function renameImage() {
+    $this->checkSession();
+    
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Método no permitido']);
+        exit();
+    }
+    
+    $response = ['success' => false, 'message' => ''];
+    
+    try {
+        // Verificar que tenemos los datos necesarios
+        if (!isset($_POST['imagen_id']) || empty($_POST['imagen_id'])) {
+            throw new Exception("ID de imagen no especificado");
+        }
+        
+        if (!isset($_POST['nuevo_nombre']) || empty($_POST['nuevo_nombre'])) {
+            throw new Exception("Nuevo nombre no especificado");
+        }
+        
+        $imagen_id = (int)$_POST['imagen_id'];
+        $nuevo_nombre = trim($_POST['nuevo_nombre']);
+        
+        // Validar nombre del archivo
+        if (!preg_match('/^[a-zA-Z0-9_\-\.\s]+$/', $nuevo_nombre)) {
+            throw new Exception("Nombre de archivo no válido. Use solo letras, números, guiones, puntos y espacios.");
+        }
+        
+        // Obtener información de la imagen actual
+        $query = "SELECT ei.*, e.institucion_id, e.usuario_id 
+                 FROM evidencia_imagenes ei
+                 INNER JOIN evidencias e ON ei.evidencia_id = e.id
+                 WHERE ei.id = :id";
+        
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":id", $imagen_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $imagen = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$imagen) {
+            throw new Exception("Imagen no encontrada");
+        }
+        
+        // Verificar permisos (solo admin o el usuario que creó la evidencia)
+        if ($_SESSION['rol_id'] != 1 && $imagen['usuario_id'] != $_SESSION['usuario_id']) {
+            throw new Exception("No tiene permisos para renombrar esta imagen");
+        }
+        
+        // Obtener información de institución y ciclo para construir ruta
+        $evidencia_query = "SELECT e.*, i.nombre as institucion_nombre, c.descripcion as ciclo_descripcion
+                           FROM evidencias e
+                           INNER JOIN instituciones i ON e.institucion_id = i.id
+                           INNER JOIN ciclos c ON e.ciclo_id = c.id
+                           WHERE e.id = :evidencia_id";
+        
+        $evidencia_stmt = $this->db->prepare($evidencia_query);
+        $evidencia_stmt->bindParam(":evidencia_id", $imagen['evidencia_id'], PDO::PARAM_INT);
+        $evidencia_stmt->execute();
+        $evidencia = $evidencia_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$evidencia) {
+            throw new Exception("Evidencia no encontrada");
+        }
+        
+        // Construir nueva ruta
+        $ruta_actual = $imagen['ruta'];
+        $directorio = dirname($ruta_actual);
+        $extension = pathinfo($imagen['nombre_archivo'], PATHINFO_EXTENSION);
+        
+        // Asegurar que el nuevo nombre tenga extensión
+        $nuevo_nombre_completo = $nuevo_nombre;
+        if (!pathinfo($nuevo_nombre, PATHINFO_EXTENSION)) {
+            $nuevo_nombre_completo .= '.' . $extension;
+        }
+        
+        $nueva_ruta = $directorio . '/' . $nuevo_nombre_completo;
+        
+        // Renombrar archivo físico
+        if (file_exists($ruta_actual)) {
+            if (!rename($ruta_actual, $nueva_ruta)) {
+                throw new Exception("Error al renombrar el archivo físico");
+            }
+        }
+        
+        // Actualizar en base de datos
+        $update_query = "UPDATE evidencia_imagenes 
+                        SET nombre_archivo = :nombre_archivo, 
+                            ruta = :ruta 
+                        WHERE id = :id";
+        
+        $update_stmt = $this->db->prepare($update_query);
+        $update_stmt->bindParam(":nombre_archivo", $nuevo_nombre_completo);
+        $update_stmt->bindParam(":ruta", $nueva_ruta);
+        $update_stmt->bindParam(":id", $imagen_id, PDO::PARAM_INT);
+        
+        if ($update_stmt->execute()) {
+            $response['success'] = true;
+            $response['message'] = "Imagen renombrada correctamente";
+            $response['nuevo_nombre'] = $nuevo_nombre_completo;
+        } else {
+            // Revertir cambio en archivo si falló la BD
+            if (file_exists($nueva_ruta)) {
+                rename($nueva_ruta, $ruta_actual);
+            }
+            throw new Exception("Error al actualizar la base de datos");
+        }
+        
+    } catch (Exception $e) {
+        $response['message'] = $e->getMessage();
+    }
+    
+    // Limpiar buffer
+    if (ob_get_length()) {
+        ob_clean();
+    }
+    
+    // Forzar headers JSON
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
+    echo json_encode($response);
+    exit();
 }
 
 }
